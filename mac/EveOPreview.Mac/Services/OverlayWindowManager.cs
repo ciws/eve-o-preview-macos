@@ -11,6 +11,13 @@ namespace EveOPreview.Mac.Services;
 
 public sealed class OverlayWindowManager : IOverlayWindowManager
 {
+    // Each tick spawns one /usr/sbin/screencapture process per visible overlay, so the
+    // base interval keeps things snappy for a small number of clients, while the
+    // per-window budget caps the aggregate spawn rate as more clients are added instead
+    // of letting it grow unbounded with the client count.
+    private const int BaseIntervalMilliseconds = 450;
+    private const int PerWindowMillisecondBudget = 100;
+
     private readonly IMacWindowService _windowService;
     private readonly IAppSettingsStore _settingsStore;
     private readonly Dictionary<string, OverlayThumbnailWindow> _windows = new();
@@ -25,7 +32,7 @@ public sealed class OverlayWindowManager : IOverlayWindowManager
 
         _previewTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(450),
+            Interval = TimeSpan.FromMilliseconds(BaseIntervalMilliseconds),
         };
         _previewTimer.Tick += async (_, _) => await RefreshPreviewsAsync();
         _previewTimer.Start();
@@ -91,6 +98,8 @@ public sealed class OverlayWindowManager : IOverlayWindowManager
         _isPreviewRefreshRunning = true;
         try
         {
+            UpdatePreviewInterval();
+
             foreach (var overlay in _windows.Values)
             {
                 var client = overlay.Client;
@@ -106,6 +115,15 @@ public sealed class OverlayWindowManager : IOverlayWindowManager
         finally
         {
             _isPreviewRefreshRunning = false;
+        }
+    }
+
+    private void UpdatePreviewInterval()
+    {
+        var interval = TimeSpan.FromMilliseconds(Math.Max(BaseIntervalMilliseconds, _windows.Count * PerWindowMillisecondBudget));
+        if (_previewTimer.Interval != interval)
+        {
+            _previewTimer.Interval = interval;
         }
     }
 

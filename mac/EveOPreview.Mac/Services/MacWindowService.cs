@@ -102,6 +102,8 @@ public sealed class MacWindowService : IMacWindowService
             cancellationToken);
     }
 
+    private static readonly TimeSpan CaptureTimeout = TimeSpan.FromSeconds(5);
+
     public async Task<byte[]?> CaptureWindowPreviewPngAsync(int windowId, CancellationToken cancellationToken = default)
     {
         if (!OperatingSystem.IsMacOS() || windowId <= 0)
@@ -110,6 +112,13 @@ public sealed class MacWindowService : IMacWindowService
         }
 
         var tempPath = Path.Combine(Path.GetTempPath(), $"eve-preview-{windowId}-{Guid.NewGuid():N}.png");
+        // Bound the wait on the child process: without this, a screencapture call that
+        // never exits would hang this call forever, which in turn stalls every future
+        // preview tick since OverlayWindowManager's refresh guard never clears.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(CaptureTimeout);
+
+        Process? process = null;
         try
         {
             var startInfo = new ProcessStartInfo
@@ -125,13 +134,13 @@ public sealed class MacWindowService : IMacWindowService
             startInfo.ArgumentList.Add(windowId.ToString());
             startInfo.ArgumentList.Add(tempPath);
 
-            using var process = Process.Start(startInfo);
+            process = Process.Start(startInfo);
             if (process is null)
             {
                 return null;
             }
 
-            await process.WaitForExitAsync(cancellationToken);
+            await process.WaitForExitAsync(timeoutCts.Token);
             if (process.ExitCode != 0 || !File.Exists(tempPath))
             {
                 return null;
@@ -146,6 +155,20 @@ public sealed class MacWindowService : IMacWindowService
         }
         finally
         {
+            if (process is { HasExited: false })
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // Ignore failures killing an already-exiting process.
+                }
+            }
+
+            process?.Dispose();
+
             try
             {
                 if (File.Exists(tempPath))

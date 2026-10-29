@@ -99,9 +99,15 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task SaveSettingsAsync()
     {
-        var settings = BuildCurrentSettings();
+        // Re-read the on-disk overlay positions first: OverlayWindowManager persists
+        // drag-to-move updates straight to disk as they happen, so the ViewModel's own
+        // cached copy can be stale. Building on top of the fresh copy avoids clobbering
+        // a drag that happened since this ViewModel last loaded its positions.
+        var storedSettings = await _settingsStore.LoadAsync();
+        var settings = BuildCurrentSettings(storedSettings.OverlayPositions);
 
         await _settingsStore.SaveAsync(settings);
+        _overlayPositions = settings.OverlayPositions;
         Status = "Settings saved.";
         _overlayWindowManager.SyncOverlays(Clients.ToList(), settings, ActivateClientInternalAsync);
     }
@@ -185,25 +191,32 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private async Task LoadSettingsAsync()
     {
-        var settings = await _settingsStore.LoadAsync();
-        TrackClientLocations = settings.TrackClientLocations;
-        HidePreviewOfActiveClient = settings.HidePreviewOfActiveClient;
-        MinimizeInactiveClients = settings.MinimizeInactiveClients;
-        PreviewsAlwaysOnTop = settings.PreviewsAlwaysOnTop;
-        HidePreviewsWhenClientNotActive = settings.HidePreviewsWhenClientNotActive;
-        UniqueLayoutForEachClient = settings.UniqueLayoutForEachClient;
-        ThumbnailOpacity = settings.ThumbnailOpacity;
-        ThumbnailWidth = settings.ThumbnailWidth;
-        ThumbnailHeight = settings.ThumbnailHeight;
-        ZoomOnHover = settings.ZoomOnHover;
-        ZoomFactor = settings.ZoomFactor;
-        ShowOverlay = settings.ShowOverlay;
-        ShowFrames = settings.ShowFrames;
-        HighlightActiveClient = settings.HighlightActiveClient;
-        _overlayPositions = new Dictionary<string, OverlayPosition>(settings.OverlayPositions);
+        try
+        {
+            var settings = await _settingsStore.LoadAsync();
+            TrackClientLocations = settings.TrackClientLocations;
+            HidePreviewOfActiveClient = settings.HidePreviewOfActiveClient;
+            MinimizeInactiveClients = settings.MinimizeInactiveClients;
+            PreviewsAlwaysOnTop = settings.PreviewsAlwaysOnTop;
+            HidePreviewsWhenClientNotActive = settings.HidePreviewsWhenClientNotActive;
+            UniqueLayoutForEachClient = settings.UniqueLayoutForEachClient;
+            ThumbnailOpacity = settings.ThumbnailOpacity;
+            ThumbnailWidth = settings.ThumbnailWidth;
+            ThumbnailHeight = settings.ThumbnailHeight;
+            ZoomOnHover = settings.ZoomOnHover;
+            ZoomFactor = settings.ZoomFactor;
+            ShowOverlay = settings.ShowOverlay;
+            ShowFrames = settings.ShowFrames;
+            HighlightActiveClient = settings.HighlightActiveClient;
+            _overlayPositions = new Dictionary<string, OverlayPosition>(settings.OverlayPositions);
+        }
+        catch (Exception ex)
+        {
+            Status = $"Unable to load saved settings; using defaults. Details: {ex.Message}";
+        }
     }
 
-    private AppSettings BuildCurrentSettings() => new()
+    private AppSettings BuildCurrentSettings(IReadOnlyDictionary<string, OverlayPosition>? overlayPositions = null) => new()
     {
         TrackClientLocations = TrackClientLocations,
         HidePreviewOfActiveClient = HidePreviewOfActiveClient,
@@ -219,6 +232,6 @@ public partial class MainWindowViewModel : ViewModelBase
         ShowOverlay = ShowOverlay,
         ShowFrames = ShowFrames,
         HighlightActiveClient = HighlightActiveClient,
-        OverlayPositions = new Dictionary<string, OverlayPosition>(_overlayPositions),
+        OverlayPositions = new Dictionary<string, OverlayPosition>(overlayPositions ?? _overlayPositions),
     };
 }
