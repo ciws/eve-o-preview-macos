@@ -51,6 +51,7 @@ public sealed class MacWindowService : IMacWindowService
 
             var results = ParseAppleScriptWindowLines(lines);
             AttachMissingWindowIds(results);
+            AddWindowsHiddenFromSystemEvents(results);
             return results;
         }
         catch (OperationCanceledException)
@@ -246,6 +247,21 @@ public sealed class MacWindowService : IMacWindowService
         }
 
         return results;
+    }
+
+    // Some apps, including the native macOS EVE client, expose no windows to
+    // System Events even though CoreGraphics can see them. Add CoreGraphics
+    // windows for any process System Events reported no windows for.
+    private static void AddWindowsHiddenFromSystemEvents(List<ClientWindowInfo> windows)
+    {
+        var processIdsWithWindows = windows.Select(x => x.ProcessId).ToHashSet();
+        foreach (var window in GetWindowsFromCoreGraphics())
+        {
+            if (!processIdsWithWindows.Contains(window.ProcessId))
+            {
+                windows.Add(window);
+            }
+        }
     }
 
     private static string? TryGetProcessName(int processId)
