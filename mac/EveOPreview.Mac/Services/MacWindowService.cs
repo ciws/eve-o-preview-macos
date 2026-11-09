@@ -51,6 +51,7 @@ public sealed class MacWindowService : IMacWindowService
 
             var results = ParseAppleScriptWindowLines(lines);
             AttachMissingWindowIds(results);
+            AddWindowsHiddenFromSystemEvents(results);
             return results;
         }
         catch (OperationCanceledException)
@@ -77,29 +78,38 @@ public sealed class MacWindowService : IMacWindowService
         {
             return;
         }
+        var activated = RunningApplicationActivator.TryActivate(window.ProcessId);
         var escapedWindowTitle = EscapeAppleScriptString(window.WindowTitle);
 
-        await RunAppleScriptAsync(
-            [
-                "tell application \"System Events\"",
-                $"set targetProcess to first application process whose unix id is {window.ProcessId}",
-                "set frontmost of targetProcess to true",
-                "set targetWindow to missing value",
-                "try",
-                $"set matchingWindows to (windows of targetProcess whose value of attribute \"AXWindowNumber\" is {window.WindowId})",
-                "if (count of matchingWindows) > 0 then set targetWindow to item 1 of matchingWindows",
-                "end try",
-                "if targetWindow is missing value then",
-                $"if (exists (first window of targetProcess whose name is \"{escapedWindowTitle}\")) then",
-                $"set targetWindow to first window of targetProcess whose name is \"{escapedWindowTitle}\"",
-                "end if",
-                "end if",
-                "if targetWindow is not missing value then",
-                "perform action \"AXRaise\" of targetWindow",
-                "end if",
-                "end tell",
-            ],
-            cancellationToken);
+        try
+        {
+            await RunAppleScriptAsync(
+                [
+                    "tell application \"System Events\"",
+                    $"set targetProcess to first application process whose unix id is {window.ProcessId}",
+                    "set frontmost of targetProcess to true",
+                    "set targetWindow to missing value",
+                    "try",
+                    $"set matchingWindows to (windows of targetProcess whose value of attribute \"AXWindowNumber\" is {window.WindowId})",
+                    "if (count of matchingWindows) > 0 then set targetWindow to item 1 of matchingWindows",
+                    "end try",
+                    "if targetWindow is missing value then",
+                    $"if (exists (first window of targetProcess whose name is \"{escapedWindowTitle}\")) then",
+                    $"set targetWindow to first window of targetProcess whose name is \"{escapedWindowTitle}\"",
+                    "end if",
+                    "end if",
+                    "if targetWindow is not missing value then",
+                    "perform action \"AXRaise\" of targetWindow",
+                    "end if",
+                    "end tell",
+                ],
+                cancellationToken);
+        }
+        catch (Exception ex) when (activated && ex is not OperationCanceledException)
+        {
+            // System Events cannot see some apps (e.g. the native EVE client).
+            // The app is already frontmost, so skipping the window raise is fine.
+        }
     }
 
     private static readonly TimeSpan CaptureTimeout = TimeSpan.FromSeconds(5);
@@ -269,6 +279,21 @@ public sealed class MacWindowService : IMacWindowService
         }
 
         return results;
+    }
+
+    // Some apps, including the native macOS EVE client, expose no windows to
+    // System Events even though CoreGraphics can see them. Add CoreGraphics
+    // windows for any process System Events reported no windows for.
+    private static void AddWindowsHiddenFromSystemEvents(List<ClientWindowInfo> windows)
+    {
+        var processIdsWithWindows = windows.Select(x => x.ProcessId).ToHashSet();
+        foreach (var window in GetWindowsFromCoreGraphics())
+        {
+            if (!processIdsWithWindows.Contains(window.ProcessId))
+            {
+                windows.Add(window);
+            }
+        }
     }
 
     private static string? TryGetProcessName(int processId)
