@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -7,5 +8,5 @@ public interface IAppSettingsStore
 {
     Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default);
 
-    Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default);
+    Task UpdateAsync(Func<AppSettings, AppSettings> update, CancellationToken cancellationToken = default);
 }

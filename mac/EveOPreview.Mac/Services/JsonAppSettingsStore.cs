@@ -14,6 +14,7 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
     };
 
     private readonly string _settingsPath;
+    private readonly SemaphoreSlim _settingsLock = new(1, 1);
 
     public JsonAppSettingsStore()
     {
@@ -25,17 +26,45 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
 
     public async Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default)
     {
+        await _settingsLock.WaitAsync(cancellationToken);
+        try
+        {
+            return await ReadAsync(cancellationToken);
+        }
+        finally
+        {
+            _settingsLock.Release();
+        }
+    }
+
+    public async Task UpdateAsync(Func<AppSettings, AppSettings> update, CancellationToken cancellationToken = default)
+    {
+        await _settingsLock.WaitAsync(cancellationToken);
+        try
+        {
+            var settings = await ReadAsync(cancellationToken);
+            await WriteAsync(update(settings), cancellationToken);
+        }
+        finally
+        {
+            _settingsLock.Release();
+        }
+    }
+
+    private async Task<AppSettings> ReadAsync(CancellationToken cancellationToken)
+    {
         if (!File.Exists(_settingsPath))
         {
             return new AppSettings();
         }
 
         await using var stream = File.OpenRead(_settingsPath);
-        var loaded = await JsonSerializer.DeserializeAsync<AppSettings>(stream, SerializerOptions, cancellationToken);
-        return loaded ?? new AppSettings();
+        var settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, SerializerOptions, cancellationToken) ?? new AppSettings();
+        settings.OverlayPositions ??= new();
+        return settings;
     }
 
-    public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
+    private async Task WriteAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var directory = Path.GetDirectoryName(_settingsPath);
         if (!string.IsNullOrWhiteSpace(directory))
@@ -43,7 +72,19 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
             Directory.CreateDirectory(directory);
         }
 
-        await using var stream = File.Create(_settingsPath);
-        await JsonSerializer.SerializeAsync(stream, settings, SerializerOptions, cancellationToken);
+        var tempPath = $"{_settingsPath}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await using (var stream = File.Create(tempPath))
+            {
+                await JsonSerializer.SerializeAsync(stream, settings, SerializerOptions, cancellationToken);
+            }
+
+            File.Move(tempPath, _settingsPath, overwrite: true);
+        }
+        finally
+        {
+            File.Delete(tempPath);
+        }
     }
 }

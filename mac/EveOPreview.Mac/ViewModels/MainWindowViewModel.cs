@@ -19,6 +19,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly IOverlayWindowManager _overlayWindowManager;
     private readonly DispatcherTimer _refreshTimer;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
+    private readonly Task _settingsLoaded;
     private Dictionary<string, OverlayPosition> _overlayPositions = new();
 
     public MainWindowViewModel(
@@ -35,9 +36,8 @@ public partial class MainWindowViewModel : ViewModelBase
             Interval = TimeSpan.FromSeconds(2),
         };
         _refreshTimer.Tick += async (_, _) => await RefreshClientsAsync();
+        _settingsLoaded = LoadSettingsAsync();
         _refreshTimer.Start();
-
-        _ = LoadSettingsAsync();
         _ = RefreshClientsAsync();
     }
 
@@ -99,17 +99,22 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task SaveSettingsAsync()
     {
-        // Re-read the on-disk overlay positions first: OverlayWindowManager persists
-        // drag-to-move updates straight to disk as they happen, so the ViewModel's own
-        // cached copy can be stale. Building on top of the fresh copy avoids clobbering
-        // a drag that happened since this ViewModel last loaded its positions.
-        var storedSettings = await _settingsStore.LoadAsync();
-        var settings = BuildCurrentSettings(storedSettings.OverlayPositions);
-
-        await _settingsStore.SaveAsync(settings);
-        _overlayPositions = settings.OverlayPositions;
-        Status = "Settings saved.";
-        _overlayWindowManager.SyncOverlays(Clients.ToList(), settings, ActivateClientInternalAsync);
+        await _settingsLoaded;
+        var settings = BuildCurrentSettings();
+        try
+        {
+            await _settingsStore.UpdateAsync(storedSettings =>
+            {
+                settings.OverlayPositions = storedSettings.OverlayPositions;
+                return settings;
+            });
+            Status = "Settings saved.";
+            _overlayWindowManager.SyncOverlays(Clients.ToList(), BuildCurrentSettings(), ActivateClientInternalAsync);
+        }
+        catch (Exception ex)
+        {
+            Status = $"Unable to save settings: {ex.Message}";
+        }
     }
 
     [RelayCommand]
@@ -122,9 +127,10 @@ public partial class MainWindowViewModel : ViewModelBase
 
         try
         {
+            await _settingsLoaded;
             var allWindows = await _windowService.GetWindowsAsync();
             var eveWindows = allWindows
-                .Where(IsLikelyEveWindow)
+                .Where(x => x.IsEveClient)
                 .OrderBy(x => x.ProcessName)
                 .ThenBy(x => x.WindowTitle)
                 .ToList();
@@ -182,13 +188,6 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private static bool IsLikelyEveWindow(ClientWindowInfo info)
-    {
-        var isExeFile = info.ProcessName.Equals("exefile", StringComparison.OrdinalIgnoreCase);
-        var hasCharacterFormat = info.WindowTitle.StartsWith("EVE - ", StringComparison.OrdinalIgnoreCase);
-        return isExeFile && hasCharacterFormat;
-    }
-
     private async Task LoadSettingsAsync()
     {
         try
@@ -216,7 +215,7 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private AppSettings BuildCurrentSettings(IReadOnlyDictionary<string, OverlayPosition>? overlayPositions = null) => new()
+    private AppSettings BuildCurrentSettings() => new()
     {
         TrackClientLocations = TrackClientLocations,
         HidePreviewOfActiveClient = HidePreviewOfActiveClient,
@@ -232,6 +231,6 @@ public partial class MainWindowViewModel : ViewModelBase
         ShowOverlay = ShowOverlay,
         ShowFrames = ShowFrames,
         HighlightActiveClient = HighlightActiveClient,
-        OverlayPositions = new Dictionary<string, OverlayPosition>(overlayPositions ?? _overlayPositions),
+        OverlayPositions = _overlayPositions,
     };
 }
