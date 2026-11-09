@@ -100,8 +100,13 @@ public sealed class OverlayWindowManager : IOverlayWindowManager
         {
             UpdatePreviewInterval();
 
-            foreach (var overlay in _windows.Values)
+            foreach (var (key, overlay) in _windows.ToArray())
             {
+                if (_windows.GetValueOrDefault(key) != overlay)
+                {
+                    continue;
+                }
+
                 var client = overlay.Client;
                 if (client is null || client.WindowId <= 0)
                 {
@@ -109,7 +114,10 @@ public sealed class OverlayWindowManager : IOverlayWindowManager
                 }
 
                 var frame = await _windowService.CaptureWindowPreviewPngAsync(client.WindowId);
-                overlay.UpdateFrame(frame);
+                if (_windows.GetValueOrDefault(key) == overlay && overlay.Client?.WindowId == client.WindowId)
+                {
+                    overlay.UpdateFrame(frame);
+                }
             }
         }
         finally
@@ -156,23 +164,26 @@ public sealed class OverlayWindowManager : IOverlayWindowManager
             return;
         }
 
-        _currentSettings.OverlayPositions[BuildKey(client)] = new OverlayPosition
+        var key = BuildKey(client);
+        var savedPosition = new OverlayPosition
         {
             X = position.X,
             Y = position.Y,
         };
 
-        _ = PersistOverlayPositionsAsync();
+        _currentSettings.OverlayPositions[key] = savedPosition;
+        _ = PersistOverlayPositionAsync(key, savedPosition);
     }
 
-    private async Task PersistOverlayPositionsAsync()
+    private async Task PersistOverlayPositionAsync(string key, OverlayPosition position)
     {
         try
         {
-            var storedSettings = await _settingsStore.LoadAsync();
-            storedSettings.OverlayPositions = new Dictionary<string, OverlayPosition>(_currentSettings.OverlayPositions);
-            storedSettings.TrackClientLocations = _currentSettings.TrackClientLocations;
-            await _settingsStore.SaveAsync(storedSettings);
+            await _settingsStore.UpdateAsync(storedSettings =>
+            {
+                storedSettings.OverlayPositions[key] = position;
+                return storedSettings;
+            });
         }
         catch
         {

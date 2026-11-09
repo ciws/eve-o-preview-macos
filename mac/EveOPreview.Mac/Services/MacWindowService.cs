@@ -50,8 +50,7 @@ public sealed class MacWindowService : IMacWindowService
                 cancellationToken);
 
             var results = ParseAppleScriptWindowLines(lines);
-            AttachMissingWindowIds(results);
-            AddWindowsHiddenFromSystemEvents(results);
+            ReconcileWindows(results, GetWindowsFromCoreGraphics());
             return results;
         }
         catch (OperationCanceledException)
@@ -229,7 +228,7 @@ public sealed class MacWindowService : IMacWindowService
             var windowTitle = line[(thirdTab + 1)..].Trim();
 
             if (string.IsNullOrWhiteSpace(processName)
-                || !int.TryParse(pidText, out var processId))
+                || !int.TryParse(pidText, out var processId) || processId <= 0)
             {
                 continue;
             }
@@ -281,20 +280,62 @@ public sealed class MacWindowService : IMacWindowService
         return results;
     }
 
-    // Some apps, including the native macOS EVE client, expose no windows to
-    // System Events even though CoreGraphics can see them. Add CoreGraphics
-    // windows for any process System Events reported no windows for.
-    private static void AddWindowsHiddenFromSystemEvents(List<ClientWindowInfo> windows)
+    private static void ReconcileWindows(
+        List<ClientWindowInfo> windows, IReadOnlyList<ClientWindowInfo> coreGraphicsWindows)
     {
-        var processIdsWithWindows = windows.Select(x => x.ProcessId).ToHashSet();
-        foreach (var window in GetWindowsFromCoreGraphics())
+        foreach (var window in coreGraphicsWindows)
         {
-            if (!processIdsWithWindows.Contains(window.ProcessId))
+            var index = windows.FindIndex(x => x.ProcessId == window.ProcessId && x.WindowId == window.WindowId);
+            if (index < 0 && !string.IsNullOrWhiteSpace(window.WindowTitle))
             {
-                windows.Add(window);
+                index = windows.FindIndex(x => x.ProcessId == window.ProcessId && x.WindowId <= 0
+                    && x.WindowTitle.Equals(window.WindowTitle, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (index < 0)
+            {
+                if (window.IsEveClient)
+                {
+                    windows.Add(window);
+                }
+                continue;
+            }
+
+            var existing = windows[index];
+            if (window.IsEveClient && !existing.IsEveClient)
+            {
+                windows[index] = window;
+            }
+            else if (existing.WindowId <= 0)
+            {
+                windows[index] = WithWindowId(existing, window.WindowId);
+            }
+        }
+
+        // CoreGraphics may omit titles. Use a PID match only when both sides have one window.
+        var untitledWindows = coreGraphicsWindows.GroupBy(x => x.ProcessId)
+            .Where(group => group.Count() == 1 && string.IsNullOrWhiteSpace(group.First().WindowTitle))
+            .ToDictionary(group => group.Key, group => group.First().WindowId);
+        var windowCounts = windows.GroupBy(x => x.ProcessId).ToDictionary(group => group.Key, group => group.Count());
+
+        for (var i = 0; i < windows.Count; i++)
+        {
+            var window = windows[i];
+            if (window.IsEveClient && window.WindowId <= 0 && windowCounts[window.ProcessId] == 1
+                && untitledWindows.TryGetValue(window.ProcessId, out var windowId))
+            {
+                windows[i] = WithWindowId(window, windowId);
             }
         }
     }
+
+    private static ClientWindowInfo WithWindowId(ClientWindowInfo window, int windowId) => new()
+    {
+        WindowId = windowId,
+        ProcessId = window.ProcessId,
+        ProcessName = window.ProcessName,
+        WindowTitle = window.WindowTitle,
+    };
 
     private static string? TryGetProcessName(int processId)
     {
@@ -306,68 +347,6 @@ public sealed class MacWindowService : IMacWindowService
         catch
         {
             return null;
-        }
-    }
-
-    private static void AttachMissingWindowIds(List<ClientWindowInfo> windows)
-    {
-        if (windows.Count == 0 || windows.All(x => x.WindowId > 0))
-        {
-            return;
-        }
-
-        var cgWindows = CoreGraphicsWindowLookup.GetVisibleWindows();
-        if (cgWindows.Count == 0)
-        {
-            return;
-        }
-
-        var idByPidAndTitle = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var idByPid = new Dictionary<int, int>();
-
-        foreach (var cg in cgWindows)
-        {
-            if (!idByPid.ContainsKey(cg.ProcessId))
-            {
-                idByPid[cg.ProcessId] = cg.WindowId;
-            }
-
-            if (!string.IsNullOrWhiteSpace(cg.WindowTitle))
-            {
-                var k = $"{cg.ProcessId}|{cg.WindowTitle}";
-                if (!idByPidAndTitle.ContainsKey(k))
-                {
-                    idByPidAndTitle[k] = cg.WindowId;
-                }
-            }
-        }
-
-        for (var i = 0; i < windows.Count; i++)
-        {
-            var item = windows[i];
-            if (item.WindowId > 0)
-            {
-                continue;
-            }
-
-            var key = $"{item.ProcessId}|{item.WindowTitle}";
-            if (!idByPidAndTitle.TryGetValue(key, out var resolvedId))
-            {
-                idByPid.TryGetValue(item.ProcessId, out resolvedId);
-            }
-
-            if (resolvedId <= 0)
-            {
-                continue;
-            }
-
-            windows[i] = new ClientWindowInfo
-            {
-                WindowId = resolvedId,
-                ProcessId = item.ProcessId,
-                ProcessName = item.ProcessName,
-                WindowTitle = item.WindowTitle,
-            };
         }
     }
 

@@ -9,7 +9,7 @@ RUNTIME="${RUNTIME:-osx-arm64}"
 CONFIGURATION="${CONFIGURATION:-Release}"
 ICON_SOURCE="$PROJECT_DIR/icon.png"
 PUBLISH_DIR="$PROJECT_DIR/bin/$CONFIGURATION/net8.0/$RUNTIME/publish"
-DIST_DIR="$ROOT_DIR/dist"
+DIST_DIR="${DIST_DIR:-$ROOT_DIR/dist}"
 APP_BUNDLE_DIR="$DIST_DIR/$BUNDLE_NAME"
 DMG_PATH="$DIST_DIR/eve-o-preview-mac-${RUNTIME}.dmg"
 
@@ -60,9 +60,9 @@ cat > "$APP_BUNDLE_DIR/Contents/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>0.2.0</string>
   <key>CFBundleVersion</key>
-  <string>0.1.0</string>
+  <string>0.2.0</string>
   <key>LSMinimumSystemVersion</key>
   <string>12.0</string>
   <key>NSHighResolutionCapable</key>
@@ -72,6 +72,10 @@ cat > "$APP_BUNDLE_DIR/Contents/Info.plist" <<'PLIST'
 PLIST
 
 chmod +x "$APP_BUNDLE_DIR/Contents/MacOS/EveOPreview.Mac"
+
+echo "Signing and verifying .app bundle..."
+codesign --force --deep --sign - "$APP_BUNDLE_DIR"
+codesign --verify --deep --strict "$APP_BUNDLE_DIR"
 
 echo "Creating DMG at $DMG_PATH..."
 mkdir -p "$DIST_DIR"
