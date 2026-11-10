@@ -29,9 +29,33 @@
         </Style>
     </Window.Styles>
 
+    <!-- Panel colours follow the system theme so text stays readable in Light Mode. -->
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="HeaderBackgroundBrush" Color="#F2F2F2" />
+                    <SolidColorBrush x:Key="HeaderBorderBrush" Color="#D6D6D6" />
+                    <SolidColorBrush x:Key="StatusBackgroundBrush" Color="#F7F7F7" />
+                    <SolidColorBrush x:Key="StatusBorderBrush" Color="#DDDDDD" />
+                    <SolidColorBrush x:Key="ClientListBackgroundBrush" Color="#FAFAFA" />
+                    <SolidColorBrush x:Key="ClientListBorderBrush" Color="#D6D6D6" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="HeaderBackgroundBrush" Color="#101010" />
+                    <SolidColorBrush x:Key="HeaderBorderBrush" Color="#2A2A2A" />
+                    <SolidColorBrush x:Key="StatusBackgroundBrush" Color="#141414" />
+                    <SolidColorBrush x:Key="StatusBorderBrush" Color="#2C2C2C" />
+                    <SolidColorBrush x:Key="ClientListBackgroundBrush" Color="#151515" />
+                    <SolidColorBrush x:Key="ClientListBorderBrush" Color="#2B2B2B" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
     <Grid RowDefinitions="Auto,Auto,*" Margin="16">
-        <Border Background="#101010"
-                BorderBrush="#2A2A2A"
+        <Border Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource HeaderBorderBrush}"
                 BorderThickness="1"
                 CornerRadius="10"
                 Padding="12,10"
@@ -70,8 +94,8 @@
                 Padding="12,8"
                 Margin="0,0,0,10"
                 CornerRadius="8"
-                Background="#141414"
-                BorderBrush="#2C2C2C"
+                Background="{DynamicResource StatusBackgroundBrush}"
+                BorderBrush="{DynamicResource StatusBorderBrush}"
                 BorderThickness="1">
             <TextBlock
                 Text="{Binding Status}"
@@ -90,8 +114,8 @@
 
                     <Border
                         Grid.Row="1"
-                        Background="#151515"
-                        BorderBrush="#2B2B2B"
+                        Background="{DynamicResource ClientListBackgroundBrush}"
+                        BorderBrush="{DynamicResource ClientListBorderBrush}"
                         BorderThickness="1"
                         CornerRadius="8"
                         Padding="4"
