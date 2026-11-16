@@ -77,38 +77,24 @@ public sealed class MacWindowService : IMacWindowService
         {
             return;
         }
-        var activated = RunningApplicationActivator.TryActivate(window.ProcessId);
-        var escapedWindowTitle = EscapeAppleScriptString(window.WindowTitle);
 
-        try
+        // Every EVE client is a separate process of the same app, and System Events
+        // names them all "exefile". A process stored in an AppleScript variable is
+        // referred to by name, so later commands on it (set frontmost, windows of)
+        // land on the first "exefile" process: the first-launched client. On macOS
+        // 27.2 that sent focus back to the first client after every switch.
+        // Activate by PID, and fall back to System Events only if that fails, using
+        // the unix id inline so the reference can't fall back to the process name.
+        if (RunningApplicationActivator.TryActivate(window.ProcessId))
         {
-            await RunAppleScriptAsync(
-                [
-                    "tell application \"System Events\"",
-                    $"set targetProcess to first application process whose unix id is {window.ProcessId}",
-                    "set frontmost of targetProcess to true",
-                    "set targetWindow to missing value",
-                    "try",
-                    $"set matchingWindows to (windows of targetProcess whose value of attribute \"AXWindowNumber\" is {window.WindowId})",
-                    "if (count of matchingWindows) > 0 then set targetWindow to item 1 of matchingWindows",
-                    "end try",
-                    "if targetWindow is missing value then",
-                    $"if (exists (first window of targetProcess whose name is \"{escapedWindowTitle}\")) then",
-                    $"set targetWindow to first window of targetProcess whose name is \"{escapedWindowTitle}\"",
-                    "end if",
-                    "end if",
-                    "if targetWindow is not missing value then",
-                    "perform action \"AXRaise\" of targetWindow",
-                    "end if",
-                    "end tell",
-                ],
-                cancellationToken);
+            return;
         }
-        catch (Exception ex) when (activated && ex is not OperationCanceledException)
-        {
-            // System Events cannot see some apps (e.g. the native EVE client).
-            // The app is already frontmost, so skipping the window raise is fine.
-        }
+
+        await RunAppleScriptAsync(
+            [
+                $"tell application \"System Events\" to set frontmost of (first application process whose unix id is {window.ProcessId}) to true",
+            ],
+            cancellationToken);
     }
 
     private static readonly TimeSpan CaptureTimeout = TimeSpan.FromSeconds(5);
@@ -191,8 +177,6 @@ public sealed class MacWindowService : IMacWindowService
             }
         }
     }
-
-    private static string EscapeAppleScriptString(string input) => input.Replace("\"", "\\\"");
 
     private static List<ClientWindowInfo> ParseAppleScriptWindowLines(IReadOnlyList<string> lines)
     {
