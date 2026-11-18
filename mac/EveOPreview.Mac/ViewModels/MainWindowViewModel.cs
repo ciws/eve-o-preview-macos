@@ -135,17 +135,14 @@ public partial class MainWindowViewModel : ViewModelBase
                 .ThenBy(x => x.WindowTitle)
                 .ToList();
 
-            Clients.Clear();
-            foreach (var item in eveWindows)
-            {
-                Clients.Add(item);
-            }
+            var previousSelection = SelectedClient;
+            UpdateClients(eveWindows);
 
             _overlayWindowManager.SyncOverlays(eveWindows, BuildCurrentSettings(), ActivateClientInternalAsync);
 
             if (Clients.Count > 0)
             {
-                SelectedClient ??= Clients[0];
+                SelectedClient = FindSelection(previousSelection) ?? Clients[0];
                 Status = $"Found {Clients.Count} EVE window(s).";
             }
             else
@@ -163,6 +160,57 @@ public partial class MainWindowViewModel : ViewModelBase
             _refreshLock.Release();
         }
     }
+
+    // Update Clients in place instead of clearing it. Clearing the collection
+    // cleared the ListBox selection, so every refresh moved the selection back
+    // to the first client. Unchanged clients keep their existing instance.
+    private void UpdateClients(IReadOnlyList<ClientWindowInfo> windows)
+    {
+        for (var i = 0; i < windows.Count; i++)
+        {
+            var window = windows[i];
+            var existingIndex = -1;
+            for (var j = i; j < Clients.Count; j++)
+            {
+                if (IsSameClient(Clients[j], window)
+                    && Clients[j].WindowTitle.Equals(window.WindowTitle, StringComparison.Ordinal))
+                {
+                    existingIndex = j;
+                    break;
+                }
+            }
+
+            if (existingIndex < 0)
+            {
+                Clients.Insert(i, window);
+            }
+            else if (existingIndex != i)
+            {
+                Clients.Move(existingIndex, i);
+            }
+        }
+
+        while (Clients.Count > windows.Count)
+        {
+            Clients.RemoveAt(Clients.Count - 1);
+        }
+    }
+
+    // Keep the selected client selected across refreshes. If its title changed
+    // (e.g. a different character logged in), match it by process and window.
+    private ClientWindowInfo? FindSelection(ClientWindowInfo? previous)
+    {
+        if (previous is null)
+        {
+            return null;
+        }
+
+        return Clients.FirstOrDefault(x => ReferenceEquals(x, previous))
+            ?? Clients.FirstOrDefault(x => IsSameClient(x, previous));
+    }
+
+    private static bool IsSameClient(ClientWindowInfo a, ClientWindowInfo b) =>
+        a.ProcessId == b.ProcessId && a.WindowId == b.WindowId;
 
     [RelayCommand(CanExecute = nameof(CanActivateSelected))]
     private async Task ActivateSelectedAsync()
