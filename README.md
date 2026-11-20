@@ -31,8 +31,9 @@ This project is a dedicated macOS implementation built with:
 
 - .NET 8
 - Avalonia UI
-- CoreGraphics
-- AppleScript / System Events
+- CoreGraphics for client discovery
+- ScreenCaptureKit for native window preview streams
+- AppleScript / System Events as a client activation fallback
 
 ## How to use
 
@@ -43,6 +44,9 @@ This project is a dedicated macOS implementation built with:
 5. Click a floating preview to bring the matching client to the front.
 
 ## Build
+
+Requires macOS 12.3 or later, the .NET 8 SDK, and Xcode Command Line Tools.
+The build compiles an Objective-C ScreenCaptureKit bridge for the selected architecture.
 
 From the repository root:
 
@@ -69,7 +73,24 @@ Depending on your macOS settings, the app may request access to:
 - Automation
 - Screen Recording
 
-These permissions are used for client discovery, activation, and preview capture.
+Screen Recording is required for window titles and preview capture. Use **Set up Screen Recording** in the Config tab to request permission or open the matching System Settings page. Accessibility and Automation may be needed for the client activation fallback; client discovery no longer waits for System Events.
+
+Preview streams deliver up to 15 frames per second at thumbnail resolution. The app keeps the latest frame and reuses its display bitmap. Capture errors and missing Screen Recording permission appear inside the affected preview. After granting permission, reopen the app if macOS requests it.
+
+### Native capture checks
+
+From the repository root, build and run the buffer-copy and stream-lifecycle checks.
+
+```bash
+xcrun clang -mmacosx-version-min=12.3 -O2 -fobjc-arc -fblocks \
+  mac/tests/WindowCaptureTests.m \
+  -framework Foundation -framework AppKit -framework ScreenCaptureKit \
+  -framework CoreGraphics -framework CoreMedia -framework CoreVideo \
+  -o /tmp/eve-native-capture-tests
+/tmp/eve-native-capture-tests --live
+```
+
+The live check captures only its own test window. It is skipped when Screen Recording permission is unavailable.
 
 ## Project status
 
@@ -102,3 +123,9 @@ If this project is useful to you and you would like to support it, ISK donations
 Current packaged build output:
 
 - `mac/dist/eve-o-preview-mac-osx-arm64.dmg`
+
+To release version X.Y.Z:
+
+1. Set `<Version>X.Y.Z</Version>` in `mac/EveOPreview.Mac/EveOPreview.Mac.csproj`. This is the only place the version is defined.
+2. Run `./mac/scripts/build-dmg.sh`. It copies the version into the app bundle, and **About EVE-O Preview** shows it.
+3. Attach `mac/dist/eve-o-preview-mac-osx-arm64.dmg` to a GitHub release tagged `vX.Y.Z`.

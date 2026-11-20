@@ -97,10 +97,22 @@
                 Background="{DynamicResource StatusBackgroundBrush}"
                 BorderBrush="{DynamicResource StatusBorderBrush}"
                 BorderThickness="1">
-            <TextBlock
-                Text="{Binding Status}"
-                TextWrapping="Wrap"
-                FontSize="13" />
+            <StackPanel Spacing="8">
+                <TextBlock
+                    Text="{Binding Status}"
+                    TextWrapping="Wrap"
+                    FontSize="13" />
+                <StackPanel IsVisible="{Binding NeedsScreenRecordingPermission}" Spacing="6">
+                    <Button Content="Enable Screen Recording"
+                            Click="OnScreenRecordingClicked"
+                            HorizontalAlignment="Left"
+                            Padding="12,6" />
+                    <TextBlock Text="{Binding ScreenRecordingHelp}"
+                               TextWrapping="Wrap"
+                               FontSize="12"
+                               Opacity="0.75" />
+                </StackPanel>
+            </StackPanel>
         </Border>
 
         <TabControl Grid.Row="2">
@@ -203,6 +215,9 @@
             <TabItem Header="Config">
                 <ScrollViewer Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="12">
+                        <Button Content="Set up Screen Recording"
+                                Click="OnScreenRecordingClicked"
+                                HorizontalAlignment="Left" />
                         <TextBlock Text="Implemented now: thumbnail size, opacity, always-on-top, title overlay visibility, and persistent thumbnail positions." TextWrapping="Wrap" />
                         <TextBlock Text="Disabled controls are placeholders for features that are not wired up in the macOS port yet." TextWrapping="Wrap" />
                         <Button Content="Save settings" Command="{Binding SaveSettingsCommand}" Width="140" />

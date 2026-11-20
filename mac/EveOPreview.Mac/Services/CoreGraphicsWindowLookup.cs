@@ -6,15 +6,14 @@ namespace EveOPreview.Mac.Services;
 
 internal static class CoreGraphicsWindowLookup
 {
-    private const uint KcgWindowListOptionOnScreenOnly = 1;
     private const uint KcgWindowListExcludeDesktopElements = 16;
     private const uint KcgNullWindowId = 0;
     private const uint KcfStringEncodingUtf8 = 0x0800_0100;
     private const int KcfNumberSInt64Type = 4;
 
-    public static IReadOnlyList<CoreGraphicsWindowInfo> GetVisibleWindows()
+    public static IReadOnlyList<CoreGraphicsWindowInfo> GetWindows()
     {
-        var listRef = CGWindowListCopyWindowInfo(KcgWindowListOptionOnScreenOnly | KcgWindowListExcludeDesktopElements, KcgNullWindowId);
+        var listRef = CGWindowListCopyWindowInfo(KcgWindowListExcludeDesktopElements, KcgNullWindowId);
         if (listRef == IntPtr.Zero)
         {
             return [];

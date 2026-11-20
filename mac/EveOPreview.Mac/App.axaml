@@ -2,8 +2,16 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="EveOPreview.Mac.App"
              xmlns:local="using:EveOPreview.Mac"
+             Name="EVE-O Preview"
              RequestedThemeVariant="Default">
              <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+
+    <NativeMenu.Menu>
+        <NativeMenu>
+            <NativeMenuItem Header="About EVE-O Preview" Click="OnAboutClicked" />
+            <NativeMenuItem Header="EVE-O Preview on GitHub" Click="OnGitHubClicked" />
+        </NativeMenu>
+    </NativeMenu.Menu>
 
     <Application.DataTemplates>
         <local:ViewLocator/>

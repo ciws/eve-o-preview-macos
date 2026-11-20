@@ -12,6 +12,11 @@ PUBLISH_DIR="$PROJECT_DIR/bin/$CONFIGURATION/net8.0/$RUNTIME/publish"
 DIST_DIR="${DIST_DIR:-$ROOT_DIR/dist}"
 APP_BUNDLE_DIR="$DIST_DIR/$BUNDLE_NAME"
 DMG_PATH="$DIST_DIR/eve-o-preview-mac-${RUNTIME}.dmg"
+VERSION="$(dotnet msbuild "$PROJECT_DIR/EveOPreview.Mac.csproj" -nologo -getProperty:Version)"
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Expected a numeric X.Y.Z version in EveOPreview.Mac.csproj, got: $VERSION" >&2
+  exit 1
+fi
 
 echo "Building macOS app ($RUNTIME, $CONFIGURATION)..."
 dotnet publish "$PROJECT_DIR/EveOPreview.Mac.csproj" \
@@ -42,7 +47,7 @@ cp "$ICON_SOURCE" "$ICONSET_DIR/AppIcon.iconset/icon_512x512@2x.png"
 iconutil -c icns "$ICONSET_DIR/AppIcon.iconset" -o "$APP_BUNDLE_DIR/Contents/Resources/AppIcon.icns"
 rm -rf "$ICONSET_DIR"
 
-cat > "$APP_BUNDLE_DIR/Contents/Info.plist" <<'PLIST'
+cat > "$APP_BUNDLE_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -60,11 +65,11 @@ cat > "$APP_BUNDLE_DIR/Contents/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.2.2</string>
+  <string>${VERSION}</string>
   <key>CFBundleVersion</key>
-  <string>0.2.2</string>
+  <string>${VERSION}</string>
   <key>LSMinimumSystemVersion</key>
-  <string>12.0</string>
+  <string>12.3</string>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>

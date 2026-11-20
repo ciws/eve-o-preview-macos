@@ -2,6 +2,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
+    <Version>0.2.3</Version>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
@@ -25,4 +26,18 @@
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.1" />
   </ItemGroup>
+  <Target Name="BuildNativeCapture" BeforeTargets="PrepareForBuild"
+          Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <PropertyGroup>
+      <CaptureArchitecture>arm64</CaptureArchitecture>
+      <CaptureArchitecture Condition="'$(RuntimeIdentifier)' == 'osx-x64' Or ('$(RuntimeIdentifier)' == '' And '$(NETCoreSdkRuntimeIdentifier)' == 'osx-x64')">x86_64</CaptureArchitecture>
+      <CaptureLibrary>$(IntermediateOutputPath)native/libEveCapture.dylib</CaptureLibrary>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)native" />
+    <Exec Command="xcrun clang -arch $(CaptureArchitecture) -mmacosx-version-min=12.3 -O2 -fobjc-arc -fblocks -Wall -Wextra -Werror -Wno-unused-parameter -dynamiclib &quot;$(MSBuildProjectDirectory)/Native/WindowCapture.m&quot; -framework Foundation -framework ScreenCaptureKit -framework CoreGraphics -framework CoreMedia -framework CoreVideo -install_name @rpath/libEveCapture.dylib -o &quot;$(CaptureLibrary)&quot;" />
+    <ItemGroup>
+      <Content Include="$(CaptureLibrary)" Link="libEveCapture.dylib"
+               CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>

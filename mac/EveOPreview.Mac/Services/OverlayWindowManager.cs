@@ -11,19 +11,11 @@ namespace EveOPreview.Mac.Services;
 
 public sealed class OverlayWindowManager : IOverlayWindowManager
 {
-    // Each tick spawns one /usr/sbin/screencapture process per visible overlay, so the
-    // base interval keeps things snappy for a small number of clients, while the
-    // per-window budget caps the aggregate spawn rate as more clients are added instead
-    // of letting it grow unbounded with the client count.
-    private const int BaseIntervalMilliseconds = 450;
-    private const int PerWindowMillisecondBudget = 100;
-
     private readonly IMacWindowService _windowService;
     private readonly IAppSettingsStore _settingsStore;
     private readonly Dictionary<string, OverlayThumbnailWindow> _windows = new();
     private readonly DispatcherTimer _previewTimer;
     private AppSettings _currentSettings = new();
-    private bool _isPreviewRefreshRunning;
 
     public OverlayWindowManager(IMacWindowService windowService, IAppSettingsStore settingsStore)
     {
@@ -32,9 +24,9 @@ public sealed class OverlayWindowManager : IOverlayWindowManager
 
         _previewTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(BaseIntervalMilliseconds),
+            Interval = TimeSpan.FromSeconds(1.0 / 15),
         };
-        _previewTimer.Tick += async (_, _) => await RefreshPreviewsAsync();
+        _previewTimer.Tick += (_, _) => RefreshPreviews();
         _previewTimer.Start();
     }
 
@@ -69,6 +61,7 @@ public sealed class OverlayWindowManager : IOverlayWindowManager
             overlay.Topmost = settings.PreviewsAlwaysOnTop;
             overlay.SetOverlayHeaderVisible(settings.ShowOverlay);
             overlay.BindClient(client, activateClientAsync);
+            overlay.ConfigurePreview(_windowService);
 
             y += settings.ThumbnailHeight + 10;
         }
@@ -88,50 +81,11 @@ public sealed class OverlayWindowManager : IOverlayWindowManager
         CloseAll();
     }
 
-    private async Task RefreshPreviewsAsync()
+    private void RefreshPreviews()
     {
-        if (_isPreviewRefreshRunning || _windows.Count == 0)
+        foreach (var overlay in _windows.Values)
         {
-            return;
-        }
-
-        _isPreviewRefreshRunning = true;
-        try
-        {
-            UpdatePreviewInterval();
-
-            foreach (var (key, overlay) in _windows.ToArray())
-            {
-                if (_windows.GetValueOrDefault(key) != overlay)
-                {
-                    continue;
-                }
-
-                var client = overlay.Client;
-                if (client is null || client.WindowId <= 0)
-                {
-                    continue;
-                }
-
-                var frame = await _windowService.CaptureWindowPreviewPngAsync(client.WindowId);
-                if (_windows.GetValueOrDefault(key) == overlay && overlay.Client?.WindowId == client.WindowId)
-                {
-                    overlay.UpdateFrame(frame);
-                }
-            }
-        }
-        finally
-        {
-            _isPreviewRefreshRunning = false;
-        }
-    }
-
-    private void UpdatePreviewInterval()
-    {
-        var interval = TimeSpan.FromMilliseconds(Math.Max(BaseIntervalMilliseconds, _windows.Count * PerWindowMillisecondBudget));
-        if (_previewTimer.Interval != interval)
-        {
-            _previewTimer.Interval = interval;
+            overlay.RefreshPreview();
         }
     }
 

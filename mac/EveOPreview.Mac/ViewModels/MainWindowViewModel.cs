@@ -49,6 +49,12 @@ public partial class MainWindowViewModel : ViewModelBase
     private string _status = "Scanning for EVE client windows...";
 
     [ObservableProperty]
+    private bool _needsScreenRecordingPermission;
+
+    [ObservableProperty]
+    private string _screenRecordingHelp = "Allow EVE-O Preview in Screen & System Audio Recording, then quit and reopen the app if macOS requests it.";
+
+    [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ActivateSelectedCommand))]
     private ClientWindowInfo? _selectedClient;
 
@@ -128,6 +134,8 @@ public partial class MainWindowViewModel : ViewModelBase
         try
         {
             await _settingsLoaded;
+            NeedsScreenRecordingPermission = OperatingSystem.IsMacOS()
+                && NativeWindowCapture.CheckPermission() is not null;
             var allWindows = await _windowService.GetWindowsAsync();
             var eveWindows = allWindows
                 .Where(x => x.IsEveClient)
@@ -148,7 +156,8 @@ public partial class MainWindowViewModel : ViewModelBase
             else
             {
                 SelectedClient = null;
-                Status = "No EVE windows found. Keep this open while EVE is running.";
+                Status = _windowService.PreviewPermissionError
+                    ?? "No EVE windows found. Keep this open while EVE is running.";
             }
         }
         catch (Exception ex)

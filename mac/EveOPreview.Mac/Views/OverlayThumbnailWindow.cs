@@ -1,13 +1,12 @@
 using System;
-using System.IO;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
 using EveOPreview.Mac.Models;
+using EveOPreview.Mac.Services;
 
 namespace EveOPreview.Mac.Views;
 
@@ -17,7 +16,8 @@ public sealed class OverlayThumbnailWindow : Window
     private readonly Border _header;
     private readonly TextBlock _title;
     private readonly Image _previewImage;
-    private Bitmap? _previewBitmap;
+    private readonly TextBlock _captureStatus;
+    private NativeWindowCapture? _capture;
     private Func<ClientWindowInfo, Task>? _activateClientAsync;
 
     // Pointer travel (in pixels) before a press counts as a drag instead of a click.
@@ -60,10 +60,23 @@ public sealed class OverlayThumbnailWindow : Window
             VerticalAlignment = VerticalAlignment.Stretch,
         };
 
+        _captureStatus = new TextBlock
+        {
+            Foreground = Brushes.White,
+            TextWrapping = TextWrapping.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10),
+            FontSize = 12,
+            Text = "Starting native preview...",
+        };
+        var previewContent = new Grid();
+        previewContent.Children.Add(_previewImage);
+        previewContent.Children.Add(_captureStatus);
         var previewContainer = new Border
         {
             Background = new SolidColorBrush(Color.FromRgb(10, 10, 10)),
-            Child = _previewImage,
+            Child = previewContent,
         };
 
         var layout = new Grid
@@ -104,31 +117,43 @@ public sealed class OverlayThumbnailWindow : Window
         _header.IsVisible = isVisible;
     }
 
-    public void UpdateFrame(byte[]? pngBytes)
+    public void ConfigurePreview(IMacWindowService windowService)
     {
-        try
-        {
-            if (pngBytes is null || pngBytes.Length == 0)
-            {
-                return;
-            }
+        if (Client is null) return;
+        var size = new PixelSize(
+            Math.Clamp((int)Math.Ceiling(Width * RenderScaling), 2, 1280),
+            Math.Clamp((int)Math.Ceiling(Height * RenderScaling), 2, 800));
+        if (_capture?.WindowId == Client.WindowId && _capture.Size == size) return;
+        _previewImage.Source = null;
+        _capture?.Dispose();
+        _capture = Client.WindowId > 0 ? windowService.CreateWindowPreview(Client.WindowId, size) : null;
+        _captureStatus.Text = _capture?.Error ?? "Starting native preview...";
+        _captureStatus.IsVisible = true;
+    }
 
-            using var stream = new MemoryStream(pngBytes);
-            var bitmap = new Bitmap(stream);
-            _previewBitmap?.Dispose();
-            _previewBitmap = bitmap;
-            _previewImage.Source = _previewBitmap;
-        }
-        catch
+    public void RefreshPreview()
+    {
+        if (_capture is null) return;
+        var bitmap = _capture.GetLatestFrame();
+        if (_capture.Error is not null)
         {
-            // Ignore invalid frame payloads.
+            _captureStatus.Text = _capture.Error;
+            _captureStatus.IsVisible = true;
+            return;
+        }
+        if (bitmap is not null)
+        {
+            _previewImage.Source = bitmap;
+            _previewImage.InvalidateVisual();
+            _captureStatus.IsVisible = false;
         }
     }
 
     protected override void OnClosed(EventArgs e)
     {
-        _previewBitmap?.Dispose();
-        _previewBitmap = null;
+        _previewImage.Source = null;
+        _capture?.Dispose();
+        _capture = null;
         base.OnClosed(e);
     }
 
