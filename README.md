@@ -12,9 +12,9 @@ Main app window:
 
 ![Main app window](app-main-window.png)
 
-Overlay previews in action:
+EVE Online on macOS:
 
-![Overlay previews in action](overlay-in-action.png)
+![EVE Online on macOS](overlay-in-action.png)
 
 ## What it does
 
